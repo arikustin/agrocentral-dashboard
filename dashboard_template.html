@@ -109,6 +109,12 @@ tr:last-child td{border-bottom:none}
   <div style="text-align:right">
     <div id="lu" style="font-size:.73rem;opacity:.7;margin-bottom:5px"></div>
     <button class="btn-upd" id="bup" onclick="triggerUpdate()">🔄 Actualizar ahora</button>
+  <script>fetch('/api/status').then(r=>r.json()).then(s=>{
+    if(s.cloud_mode){
+      document.getElementById('bup').textContent='☁️ Datos en la nube';
+      document.getElementById('bup').title='Los datos se actualizan desde la PC de Ariel con el uploader';
+    }
+  });</script>
   <button class="btn-upd" id="bpause" onclick="triggerPause()"
     style="display:none;background:#fff3cd;color:#856404;margin-left:8px">
     ⏸ Pausar y guardar</button>
@@ -163,7 +169,11 @@ tr:last-child td{border-bottom:none}
   <tbody id="tb">
     <tr><td colspan="11"><div class="empty">
       <div class="ic">📊</div>
-      <p>Presiona <strong>Actualizar ahora</strong> para cargar los datos.</p>
+      <p id="empty-msg">Cargando datos...</p>
+      <script>fetch('/api/status').then(r=>r.json()).then(s=>{
+        if(s.cloud_mode) document.getElementById('empty-msg').textContent='Los datos se actualizan desde la PC de Ariel.';
+        else document.getElementById('empty-msg').innerHTML='Presiona <strong>Actualizar ahora</strong> para cargar los datos.';
+      });</script>
     </div></td></tr>
   </tbody>
 </table>
@@ -512,6 +522,10 @@ window.onload=async()=>{
     if(s.last_update)
       document.getElementById('lu').textContent=
         'Ultima actualizacion: '+new Date(s.last_update).toLocaleString('es-AR');
+    // En modo cloud, si hay datos los cargamos directo
+    if(s.cloud_mode && s.has_data){
+      loadData();
+    }
   });
 };
 </script>
