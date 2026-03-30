@@ -59,29 +59,78 @@ def api_me(): return jsonify({"username": get_user(request) or ""})
 def api_data():
     if not auth(request): return jsonify({}), 401
     try:
-        items = db.get_all_items()
-        meta  = db.get_sync_meta()
-        return jsonify({"items": items, "last_update": meta.get("last_update","")})
+        # get_all_items con manejo robusto de JSONB
+        items = []
+        meta  = {}
+        import psycopg2.extras as _extras
+        url = os.environ.get("DATABASE_URL","")
+        if url.startswith("postgres://"): url=url.replace("postgres://","postgresql://",1)
+        with psycopg2.connect(url, sslmode="require") as conn:
+            with conn.cursor(cursor_factory=_extras.RealDictCursor) as cur:
+                cur.execute("SELECT data FROM items ORDER BY updated_at DESC")
+                for row in cur.fetchall():
+                    d = row["data"]
+                    if isinstance(d, str):
+                        import json as _json
+                        d = _json.loads(d)
+                    items.append(d)
+                cur.execute("SELECT key, value FROM sync_meta")
+                meta = {r["key"]: r["value"] for r in cur.fetchall()}
+        return jsonify({"items": items, "last_update": meta.get("last_update",""), "total": len(items)})
     except Exception as e:
-        return jsonify({"error": str(e), "items": []}), 500
+        import traceback
+        return jsonify({"error": str(e), "trace": traceback.format_exc(), "items": []}), 500
 
 @app.route("/api/item/<iid>")
 def api_item(iid):
     if not auth(request): return jsonify({}), 401
-    try: return jsonify(db.get_item(iid) or {})
-    except: return jsonify({})
+    try:
+        import psycopg2.extras as _extras
+        url = os.environ.get("DATABASE_URL","")
+        if url.startswith("postgres://"): url=url.replace("postgres://","postgresql://",1)
+        with psycopg2.connect(url, sslmode="require") as conn:
+            with conn.cursor(cursor_factory=_extras.RealDictCursor) as cur:
+                cur.execute("SELECT data FROM items WHERE id=%s",(iid,))
+                row = cur.fetchone()
+        if not row: return jsonify({})
+        d = row["data"]
+        if isinstance(d,str): import json as _j; d=_j.loads(d)
+        return jsonify(d)
+    except Exception as e:
+        return jsonify({"error":str(e)}), 500
 
 @app.route("/api/reviews")
 def api_reviews():
     if not auth(request): return jsonify({}), 401
-    try: return jsonify(db.get_all_reviews())
+    try:
+        import psycopg2.extras as _extras
+        url = os.environ.get("DATABASE_URL","")
+        if url.startswith("postgres://"): url=url.replace("postgres://","postgresql://",1)
+        with psycopg2.connect(url, sslmode="require") as conn:
+            with conn.cursor(cursor_factory=_extras.RealDictCursor) as cur:
+                cur.execute("SELECT item_id, username, fecha FROM reviews")
+                rows = cur.fetchall()
+        return jsonify({r["item_id"]:{"usuario":r["username"],"fecha":r["fecha"]} for r in rows})
     except: return jsonify({})
 
 @app.route("/api/review/<iid>", methods=["POST"])
 def api_review(iid):
     u = get_user(request)
     if not u: return jsonify({"ok":False}), 401
-    try: return jsonify({"ok":True,"review":db.save_review(iid,u)})
+    try:
+        from datetime import datetime as _dt
+        fecha = _dt.now().strftime("%d/%m/%Y %H:%M")
+        url = os.environ.get("DATABASE_URL","")
+        if url.startswith("postgres://"): url=url.replace("postgres://","postgresql://",1)
+        with psycopg2.connect(url, sslmode="require") as conn:
+            with conn.cursor() as cur:
+                cur.execute("""INSERT INTO reviews (item_id,username,fecha,timestamp)
+                    VALUES (%s,%s,%s,NOW())
+                    ON CONFLICT (item_id) DO UPDATE SET
+                    username=EXCLUDED.username,fecha=EXCLUDED.fecha,timestamp=NOW()
+                """,(iid,u,fecha))
+            conn.commit()
+        return jsonify({"ok":True,"review":{"usuario":u,"fecha":fecha}})
     except Exception as e: return jsonify({"ok":False,"error":str(e)}), 500
 
 @app.route("/api/status")
