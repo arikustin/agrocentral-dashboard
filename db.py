@@ -65,7 +65,7 @@ def upsert_items(items):
             psycopg2.extras.execute_values(
                 cur,
                 """
-                INSERT INTO items (id, sku, title, data, updated_at)
+                INSERT INTO items (id, sku, title, data)
                 VALUES %s
                 ON CONFLICT (id) DO UPDATE SET
                     sku        = EXCLUDED.sku,
@@ -90,7 +90,14 @@ def get_all_items():
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("SELECT data FROM items ORDER BY updated_at DESC")
             rows = cur.fetchall()
-    return [json.loads(row["data"]) for row in rows]
+    result = []
+    for row in rows:
+        d = row["data"]
+        # JSONB ya viene deserializado por psycopg2
+        if isinstance(d, str):
+            d = json.loads(d)
+        result.append(d)
+    return result
 
 
 def get_item(item_id):
@@ -99,7 +106,12 @@ def get_item(item_id):
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("SELECT data FROM items WHERE id = %s", (item_id,))
             row = cur.fetchone()
-    return json.loads(row["data"]) if row else None
+    if not row:
+        return None
+    d = row["data"]
+    if isinstance(d, str):
+        d = json.loads(d)
+    return d
 
 
 def get_sync_meta():
