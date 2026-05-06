@@ -383,10 +383,10 @@ def api_competitors(item_id):
             v_comp = get_vol(comp_titulo)
             if v_mi and v_comp and v_mi > 0 and v_comp > 0:
                 ratio = max(v_mi, v_comp) / min(v_mi, v_comp)
-                # Umbral: líquidos pequeños (<= 2L) → 3.5x; profesionales → 10x
-                max_vol = max(v_mi, v_comp)
-                umbral = 3.5 if max_vol <= 2000 else 10
-                if ratio > umbral:
+                # Umbral estricto: presentaciones deben ser prácticamente iguales
+                # (tolerancia 5% para absorber ruido de parseo, igual que el scraper)
+                # 5L vs 1L = ratio 5x → NO mostrar. 1L vs 950ml = ratio 1.05x → mostrar.
+                if ratio > 1.05:
                     continue  # presentaciones incompatibles → no mostrar
 
             rows.append(r)
